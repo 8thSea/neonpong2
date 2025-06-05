@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Neon Pong</title>
+  <style>
+    body {
+      background: #000;
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+      font-family: "Courier New", monospace;
+    }
+    #gameContainer {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: #000;
+      box-shadow: 0 0 20px rgba(0, 255, 255, 0.2) inset;
+    }
+    #score {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 32px;
+      text-shadow: 0 0 10px #0f0;
+      color: #fff;
+      z-index: 10;
+    }
+    #message {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 18px;
+      color: #0ff;
+      text-shadow: 0 0 10px #0ff;
+      z-index: 10;
+    }
+    #startScreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(ellipse at center, #111 0%, #000 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: "Courier New", monospace;
+      color: white;
+      font-size: 32px;
+      z-index: 20;
+    }
+    #startScreen h1 {
+      text-shadow: 0 0 10px cyan;
+    }
+    #startScreen button {
+      font-size: 24px;
+      padding: 10px 30px;
+      background: cyan;
+      border: none;
+      color: black;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 0 15px cyan;
+    }
+  </style>
+</head>
+<body>
+  <div id="startScreen">
+    <h1>NEON PONG</h1>
+    <button onclick="startGame()">Play</button>
+  </div>
+  <div id="gameContainer">
+    <div id="score">0 : 0</div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="message">Press SPACE to Play</div>
+  </div>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const msgEl = document.getElementById('message');
+    const baseWidth = 800;
+    const baseHeight = 600;
+
+    canvas.width = baseWidth;
+    canvas.height = baseHeight;
+
+    const paddleWidth = 15, paddleHeight = 100, ballRadius = 10;
+    const leftPaddle = { x: 20, y: baseHeight / 2 - paddleHeight / 2, dy: 0 };
+    const rightPaddle = { x: baseWidth - 35, y: baseHeight / 2 - paddleHeight / 2, dy: 0 };
+    const ball = { x: baseWidth / 2, y: baseHeight / 2, dx: 0, dy: 0 };
+
+    let leftScore = 0, rightScore = 0, playing = false;
+
+    const keys = {}, trail = [], maxTrail = 20;
+    const stars = [], numStars = 100;
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+    function beep(){
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 440;
+      gain.gain.value = 0.1;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.05);
+    }
+
+    function startGame() {
+      document.getElementById('startScreen').style.display = 'none';
+      resetBall();
+      playing = true;
+    }
+
+    function resetBall(){
+      ball.x = baseWidth/2;
+      ball.y = baseHeight/2;
+      const angle = Math.random() * Math.PI/2 - Math.PI/4;
+      const speed = 5;
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      ball.dx = speed * Math.cos(angle) * dir;
+      ball.dy = speed * Math.sin(angle);
+    }
+
+    function updateScore(){
+      scoreEl.textContent = \`\${leftScore} : \${rightScore}\`;
+    }
+
+    function flashScreen(color) {
+      const flash = document.createElement('div');
+      flash.style.position = 'absolute';
+      flash.style.top = 0;
+      flash.style.left = 0;
+      flash.style.width = '100%';
+      flash.style.height = '100%';
+      flash.style.backgroundColor = color;
+      flash.style.opacity = 0.5;
+      flash.style.zIndex = 5;
+      document.body.appendChild(flash);
+      setTimeout(() => document.body.removeChild(flash), 100);
+    }
+
+    function initStars(){
+      for(let i=0;i<numStars;i++){
+        stars.push({
+          x: Math.random()*baseWidth,
+          y: Math.random()*baseHeight,
+          size: Math.random()*2+1,
+          speed: Math.random()*1+0.5
+        });
+      }
+    }
+
+    function updateStars(){
+      for(const s of stars){
+        s.y += s.speed;
+        if(s.y > baseHeight){
+          s.y = 0;
+          s.x = Math.random() * baseWidth;
+        }
+      }
+    }
+
+    function updatePaddles(){
+      if(keys['w']) leftPaddle.dy = -6;
+      else if(keys['s']) leftPaddle.dy = 6;
+      else leftPaddle.dy = 0;
+
+      // Right paddle AI
+      const speed = 4;
+      if (rightPaddle.y + paddleHeight/2 < ball.y) rightPaddle.y += speed;
+      else if (rightPaddle.y + paddleHeight/2 > ball.y) rightPaddle.y -= speed;
+
+      leftPaddle.y += leftPaddle.dy;
+      leftPaddle.y = Math.max(0, Math.min(baseHeight - paddleHeight, leftPaddle.y));
+      rightPaddle.y = Math.max(0, Math.min(baseHeight - paddleHeight, rightPaddle.y));
+    }
+
+    function updateBall(){
+      ball.x += ball.dx;
+      ball.y += ball.dy;
+
+      if(ball.y < ballRadius || ball.y > baseHeight - ballRadius){
+        ball.dy *= -1;
+        beep();
+      }
+
+      if(ball.x - ballRadius < leftPaddle.x + paddleWidth &&
+         ball.y > leftPaddle.y && ball.y < leftPaddle.y + paddleHeight){
+        ball.dx = Math.abs(ball.dx);
+        beep();
+      } else if(ball.x + ballRadius > rightPaddle.x &&
+                ball.y > rightPaddle.y && ball.y < rightPaddle.y + paddleHeight){
+        ball.dx = -Math.abs(ball.dx);
+        beep();
+      }
+
+      if(ball.x < 0){
+        rightScore++; updateScore(); beep(); flashScreen('deeppink'); playing = false;
+      }
+      if(ball.x > baseWidth){
+        leftScore++; updateScore(); beep(); flashScreen('cyan'); playing = false;
+      }
+    }
+
+    function addTrail(){
+      trail.push({x:ball.x,y:ball.y,opacity:1});
+      if(trail.length > maxTrail) trail.shift();
+      for(const t of trail) t.opacity *= 0.92;
+    }
+
+    function draw(){
+      ctx.fillStyle='#000';
+      ctx.fillRect(0,0,baseWidth,baseHeight);
+
+      for(const s of stars){
+        ctx.fillStyle = '#fff';
+        ctx.globalAlpha = s.size/3;
+        ctx.beginPath();
+        ctx.arc(s.x,s.y,s.size,0,Math.PI*2);
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = 1;
+      for(const t of trail){
+        const g = ctx.createRadialGradient(t.x,t.y,0,t.x,t.y,ballRadius);
+        g.addColorStop(0, \`rgba(255,255,255,\${t.opacity})\`);
+        g.addColorStop(1, \`rgba(0,255,255,0)\`);
+        ctx.fillStyle=g;
+        ctx.beginPath();
+        ctx.arc(t.x,t.y,ballRadius,0,Math.PI*2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle='rgba(0,255,255,0.8)';
+      ctx.shadowColor='cyan';
+      ctx.shadowBlur=20;
+      ctx.fillRect(leftPaddle.x,leftPaddle.y,paddleWidth,paddleHeight);
+
+      ctx.fillStyle='rgba(255,0,150,0.8)';
+      ctx.shadowColor='deeppink';
+      ctx.fillRect(rightPaddle.x,rightPaddle.y,paddleWidth,paddleHeight);
+
+      ctx.shadowColor = 'white';
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    function loop(){
+      updateStars();
+      if(playing){
+        updatePaddles();
+        updateBall();
+        addTrail();
+      }
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('keydown', e => {
+      keys[e.key] = true;
+      if(e.key === ' ') playing = !playing;
+    });
+    window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+    initStars();
+    loop();
+  </script>
+</body>
+</html>
